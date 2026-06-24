@@ -1,6 +1,5 @@
-use std::sync::Arc;
-use exchange_core::{Command, NewOrder, OutputEvent, RejectReason};
-use protocol::{JsonInbound, JsonNewOrder, symbol_to_id, dollars_to_ticks};
+use exchange_core::{Command, NewOrder, RejectReason};
+use protocol::{JsonInbound, symbol_to_id, dollars_to_ticks};
 
 /// Convert a parsed JSON inbound message into an engine Command.
 pub fn json_to_command(msg: JsonInbound) -> Option<Command> {

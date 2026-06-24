@@ -1,12 +1,11 @@
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
-use tracing::{debug, warn};
+use tracing::debug;
 
 use engine::Engine;
-use protocol::{parse_inbound, serialize_outbound, JsonOutbound};
-use crate::router::{json_to_command, reject_reason_str};
-use exchange_core::OutputEvent;
+use protocol::parse_inbound;
+use crate::router::json_to_command;
 
 /// Handle one JSON-line client session.
 pub async fn handle_json_session(stream: TcpStream, engine: Arc<Engine>) {

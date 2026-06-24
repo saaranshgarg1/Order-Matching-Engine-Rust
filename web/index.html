@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Order Book — Live</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d1117; color: #c9d1d9; font-family: "JetBrains Mono", monospace, monospace; font-size: 13px; }
+  header { padding: 12px 20px; background: #161b22; border-bottom: 1px solid #30363d; display: flex; align-items: center; gap: 16px; }
+  header h1 { font-size: 16px; font-weight: 600; color: #f0f6fc; }
+  #status { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #21262d; color: #8b949e; }
+  #status.connected { background: #1a4a1a; color: #3fb950; }
+  #symbol-select { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+
+  main { display: grid; grid-template-columns: 340px 1fr 280px; gap: 1px; background: #30363d; height: calc(100vh - 45px); }
+  section { background: #0d1117; overflow: hidden; display: flex; flex-direction: column; }
+  .sec-header { padding: 8px 14px; background: #161b22; border-bottom: 1px solid #30363d; font-size: 11px; font-weight: 600; color: #8b949e; letter-spacing: .05em; text-transform: uppercase; flex-shrink: 0; }
+
+  /* ── order book ── */
+  #book-container { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+  table.book { width: 100%; border-collapse: collapse; }
+  table.book td { padding: 2px 12px; text-align: right; font-variant-numeric: tabular-nums; }
+  table.book td:first-child { text-align: left; }
+  .ask-row { color: #f85149; position: relative; }
+  .bid-row { color: #3fb950; position: relative; }
+  .bar { position: absolute; top: 0; right: 0; height: 100%; opacity: .18; pointer-events: none; }
+  .ask-row .bar { background: #f85149; }
+  .bid-row .bar { background: #3fb950; }
+  #spread-row td { text-align: center; color: #8b949e; font-size: 11px; padding: 3px; background: #161b22; }
+
+  /* ── depth chart ── */
+  #chart-section { padding: 8px; }
+  canvas#depth-chart { width: 100%; height: calc(100% - 20px); }
+
+  /* ── trade tape ── */
+  #tape { flex: 1; overflow-y: auto; padding: 4px 0; }
+  .tape-row { display: flex; justify-content: space-between; padding: 2px 12px; font-size: 12px; }
+  .tape-row.buy  { color: #3fb950; }
+  .tape-row.sell { color: #f85149; }
+  .tape-ts { color: #484f58; font-size: 10px; }
+
+  /* stats bar */
+  #stats { padding: 6px 14px; background: #161b22; border-top: 1px solid #30363d; font-size: 11px; color: #8b949e; display: flex; gap: 20px; flex-shrink: 0; }
+  #stats span b { color: #c9d1d9; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>&#9679; Order Book</h1>
+  <select id="symbol-select">
+    <option>AAPL</option>
+    <option>MSFT</option>
+    <option>TSLA</option>
+    <option>GOOG</option>
+  </select>
+  <div id="status">disconnected</div>
+</header>
+
+<main>
+  <!-- LEFT: order book -->
+  <section>
+    <div class="sec-header">Order Book</div>
+    <div id="book-container">
+      <table class="book" id="asks-table"></table>
+      <table class="book"><tr id="spread-row"><td colspan="3">—</td></tr></table>
+      <table class="book" id="bids-table"></table>
+    </div>
+    <div id="stats">
+      <span>Mid <b id="stat-mid">—</b></span>
+      <span>Spread <b id="stat-spread">—</b></span>
+      <span>Trades <b id="stat-trades">0</b></span>
+    </div>
+  </section>
+
+  <!-- MIDDLE: depth chart -->
+  <section id="chart-section">
+    <div class="sec-header">Depth Chart</div>
+    <canvas id="depth-chart"></canvas>
+  </section>
+
+  <!-- RIGHT: trade tape -->
+  <section>
+    <div class="sec-header">Trade Tape</div>
+    <div id="tape"></div>
+  </section>
+</main>
+
+<script>
+const WS_URL   = "ws://127.0.0.1:9002";
+const LEVELS   = 12;
+const MAX_TAPE = 200;
+
+let ws, book = { bids: [], asks: [] }, tradeCount = 0, symbol = "AAPL";
+
+// ── connect ──────────────────────────────────────────────────────────────────
+function connect() {
+  ws = new WebSocket(WS_URL);
+  ws.onopen = () => {
+    setStatus(true);
+    ws.send(JSON.stringify({ op:"subscribe", channels:[`trades:${symbol}`,`book:${symbol}`] }));
+  };
+  ws.onclose = () => { setStatus(false); setTimeout(connect, 2000); };
+  ws.onerror = () => ws.close();
+  ws.onmessage = e => handle(JSON.parse(e.data));
+}
+
+function setStatus(ok) {
+  const el = document.getElementById("status");
+  el.textContent = ok ? "connected" : "reconnecting…";
+  el.className   = ok ? "connected"  : "";
+}
+
+// ── message dispatch ─────────────────────────────────────────────────────────
+function handle(ev) {
+  if (ev.t === "snapshot") {
+    book.bids = ev.bids.map(([p,q]) => [p,q]);
+    book.asks = ev.asks.map(([p,q]) => [p,q]);
+    renderBook();
+    drawDepth();
+  } else if (ev.t === "delta") {
+    applyDelta(ev);
+    renderBook();
+    drawDepth();
+  } else if (ev.t === "trade") {
+    appendTrade(ev);
+    tradeCount++;
+    document.getElementById("stat-trades").textContent = tradeCount;
+  }
+}
+
+function applyDelta(ev) {
+  for (const [p,q] of (ev.bids || [])) {
+    const idx = book.bids.findIndex(r => r[0] === p);
+    if (q === 0) { if (idx >= 0) book.bids.splice(idx, 1); }
+    else if (idx >= 0) book.bids[idx][1] = q;
+    else { book.bids.push([p,q]); book.bids.sort((a,b) => b[0]-a[0]); }
+  }
+  for (const [p,q] of (ev.asks || [])) {
+    const idx = book.asks.findIndex(r => r[0] === p);
+    if (q === 0) { if (idx >= 0) book.asks.splice(idx, 1); }
+    else if (idx >= 0) book.asks[idx][1] = q;
+    else { book.asks.push([p,q]); book.asks.sort((a,b) => a[0]-b[0]); }
+  }
+}
+
+// ── book render ───────────────────────────────────────────────────────────────
+function renderBook() {
+  const asks = book.asks.slice(0, LEVELS);
+  const bids = book.bids.slice(0, LEVELS);
+
+  const maxQ = Math.max(1, ...asks.map(r=>r[1]), ...bids.map(r=>r[1]));
+
+  // asks: display reversed (best ask at bottom, closest to spread)
+  const askHTML = [...asks].reverse().map(([p,q]) => {
+    const pct = (q/maxQ*100).toFixed(1);
+    return `<tr class="ask-row"><td>${p.toFixed(2)}</td><td>${q}</td>
+            <td style="position:relative"><div class="bar" style="width:${pct}%"></div>${(p*q).toFixed(0)}</td></tr>`;
+  }).join("");
+  document.getElementById("asks-table").innerHTML = askHTML;
+
+  const bidHTML = bids.map(([p,q]) => {
+    const pct = (q/maxQ*100).toFixed(1);
+    return `<tr class="bid-row"><td>${p.toFixed(2)}</td><td>${q}</td>
+            <td style="position:relative"><div class="bar" style="width:${pct}%"></div>${(p*q).toFixed(0)}</td></tr>`;
+  }).join("");
+  document.getElementById("bids-table").innerHTML = bidHTML;
+
+  if (bids.length && asks.length) {
+    const mid    = ((bids[0][0] + asks[0][0]) / 2).toFixed(4);
+    const spread = (asks[0][0] - bids[0][0]).toFixed(4);
+    document.getElementById("stat-mid").textContent    = mid;
+    document.getElementById("stat-spread").textContent = spread;
+    document.getElementById("spread-row").innerHTML =
+      `<td colspan="3">spread ${spread}</td>`;
+  }
+}
+
+// ── tape ──────────────────────────────────────────────────────────────────────
+function appendTrade(ev) {
+  const tape = document.getElementById("tape");
+  const ts   = new Date().toLocaleTimeString("en", {hour12:false});
+  const row  = document.createElement("div");
+  row.className = `tape-row ${ev.side}`;
+  row.innerHTML =
+    `<span>${ev.price.toFixed(2)} × ${ev.qty}</span>
+     <span class="tape-ts">${ts}</span>`;
+  tape.prepend(row);
+  while (tape.children.length > MAX_TAPE) tape.removeChild(tape.lastChild);
+}
+
+// ── depth chart ───────────────────────────────────────────────────────────────
+function drawDepth() {
+  const canvas = document.getElementById("depth-chart");
+  const W = canvas.offsetWidth, H = canvas.offsetHeight;
+  if (!W || !H) return;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, W, H);
+
+  const bids = book.bids.slice(0, 40);
+  const asks = book.asks.slice(0, 40);
+  if (!bids.length || !asks.length) return;
+
+  // cumulative volumes
+  const bidCum = [], askCum = [];
+  let s = 0;
+  for (const [p,q] of bids)  { s += q; bidCum.push([p, s]); }
+  s = 0;
+  for (const [p,q] of asks)  { s += q; askCum.push([p, s]); }
+
+  const allPrices = [...bids.map(r=>r[0]), ...asks.map(r=>r[0])];
+  const minP = Math.min(...allPrices), maxP = Math.max(...allPrices);
+  const maxVol = Math.max(bidCum.at(-1)?.[1]??1, askCum.at(-1)?.[1]??1);
+
+  const px = p => ((p - minP) / (maxP - minP || 1)) * W;
+  const py = v => H - (v / maxVol) * (H * 0.9);
+
+  const grad = (color, x0, x1) => {
+    const g = ctx.createLinearGradient(x0, 0, x1, 0);
+    g.addColorStop(0,   color + "44");
+    g.addColorStop(1,   color + "22");
+    return g;
+  };
+
+  // bid side (right-to-left from mid)
+  ctx.beginPath();
+  ctx.moveTo(px(bids[0][0]), H);
+  for (const [p, v] of bidCum) ctx.lineTo(px(p), py(v));
+  ctx.lineTo(px(bidCum.at(-1)[0]), H);
+  ctx.closePath();
+  ctx.fillStyle = grad("#3fb950", px(bids[0][0]), px(bidCum.at(-1)[0]));
+  ctx.fill();
+  ctx.strokeStyle = "#3fb950aa"; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (const [i, [p, v]] of bidCum.entries()) {
+    i === 0 ? ctx.moveTo(px(p), py(v)) : ctx.lineTo(px(p), py(v));
+  }
+  ctx.stroke();
+
+  // ask side
+  ctx.beginPath();
+  ctx.moveTo(px(asks[0][0]), H);
+  for (const [p, v] of askCum) ctx.lineTo(px(p), py(v));
+  ctx.lineTo(px(askCum.at(-1)[0]), H);
+  ctx.closePath();
+  ctx.fillStyle = grad("#f85149", px(askCum.at(-1)[0]), px(asks[0][0]));
+  ctx.fill();
+  ctx.strokeStyle = "#f85149aa"; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (const [i, [p, v]] of askCum.entries()) {
+    i === 0 ? ctx.moveTo(px(p), py(v)) : ctx.lineTo(px(p), py(v));
+  }
+  ctx.stroke();
+
+  // mid line
+  if (bids[0] && asks[0]) {
+    const midX = px((bids[0][0] + asks[0][0]) / 2);
+    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = "#8b949e66";
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(midX, 0); ctx.lineTo(midX, H); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+// ── symbol switch ─────────────────────────────────────────────────────────────
+document.getElementById("symbol-select").addEventListener("change", e => {
+  symbol = e.target.value;
+  book   = { bids: [], asks: [] };
+  tradeCount = 0;
+  document.getElementById("tape").innerHTML = "";
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ op:"subscribe", channels:[`trades:${symbol}`,`book:${symbol}`] }));
+  }
+});
+
+window.addEventListener("resize", drawDepth);
+connect();
+</script>
+</body>
+</html>

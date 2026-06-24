@@ -1,0 +1,80 @@
+{
+  "title": "Exchange Engine",
+  "uid": "exchange-engine",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "now-5m", "to": "now" },
+  "panels": [
+    {
+      "id": 1, "type": "timeseries", "title": "Orders / sec",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "targets": [{
+        "expr": "rate(exchange_orders_total[10s])",
+        "legendFormat": "{{symbol}} {{type}}"
+      }],
+      "fieldConfig": { "defaults": { "unit": "ops", "color": { "mode": "palette-classic" } } }
+    },
+    {
+      "id": 2, "type": "timeseries", "title": "Trades / sec",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "targets": [{
+        "expr": "rate(exchange_trades_total[10s])",
+        "legendFormat": "{{symbol}}"
+      }],
+      "fieldConfig": { "defaults": { "unit": "ops", "color": { "mode": "palette-classic" } } }
+    },
+    {
+      "id": 3, "type": "timeseries", "title": "Match Latency p50 / p99 / p999 (µs)",
+      "gridPos": { "x": 0, "y": 8, "w": 24, "h": 9 },
+      "targets": [
+        { "expr": "exchange_match_latency_seconds{quantile=\"0.5\"}  * 1e6", "legendFormat": "p50" },
+        { "expr": "exchange_match_latency_seconds{quantile=\"0.99\"} * 1e6", "legendFormat": "p99" },
+        { "expr": "exchange_match_latency_seconds{quantile=\"0.999\"} * 1e6", "legendFormat": "p999" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "µs", "custom": { "lineWidth": 2 } } }
+    },
+    {
+      "id": 4, "type": "timeseries", "title": "Rejects / sec",
+      "gridPos": { "x": 0, "y": 17, "w": 8, "h": 7 },
+      "targets": [{
+        "expr": "rate(exchange_rejects_total[10s])",
+        "legendFormat": "{{reason}}"
+      }],
+      "fieldConfig": { "defaults": { "unit": "ops", "color": { "fixedColor": "orange", "mode": "fixed" } } }
+    },
+    {
+      "id": 5, "type": "stat", "title": "Book Depth (bids)",
+      "gridPos": { "x": 8, "y": 17, "w": 8, "h": 7 },
+      "targets": [{
+        "expr": "exchange_book_depth{side=\"bid\"}",
+        "legendFormat": "{{symbol}}"
+      }],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "fixedColor": "green", "mode": "fixed" } } }
+    },
+    {
+      "id": 6, "type": "stat", "title": "Spread (ticks)",
+      "gridPos": { "x": 16, "y": 17, "w": 8, "h": 7 },
+      "targets": [{
+        "expr": "exchange_spread_ticks",
+        "legendFormat": "{{symbol}}"
+      }],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "Ring Buffer Occupancy %",
+      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 7 },
+      "targets": [{
+        "expr": "exchange_ring_occupancy",
+        "legendFormat": "shard {{shard}}"
+      }],
+      "fieldConfig": { "defaults": { "unit": "percent", "max": 100,
+        "thresholds": { "steps": [
+          { "color": "green", "value": 0 },
+          { "color": "yellow", "value": 60 },
+          { "color": "red",    "value": 90 }
+        ]}
+      }}
+    }
+  ]
+}

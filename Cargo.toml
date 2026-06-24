@@ -1,0 +1,62 @@
+[workspace]
+members = [
+    "crates/core",
+    "crates/wal",
+    "crates/protocol",
+    "crates/engine",
+    "crates/gateway",
+    "crates/marketdata",
+    "crates/metrics",
+    "crates/loadgen",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+
+[workspace.dependencies]
+# core shared deps
+rustc-hash     = "1.1"
+slab           = "0.4"
+thiserror      = "1"
+crossbeam      = { version = "0.8", features = ["crossbeam-channel"] }
+crossbeam-channel = "0.5"
+
+# async
+tokio          = { version = "1", features = ["full"] }
+tokio-tungstenite = { version = "0.21", features = ["rustls-tls-native-roots"] }
+futures        = "0.3"
+
+# serde / protocol
+serde          = { version = "1", features = ["derive"] }
+serde_json     = "1"
+bytes          = "1"
+crc32fast      = "1"
+
+# metrics
+hdrhistogram   = "7"
+metrics        = "0.22"
+metrics-exporter-prometheus = "0.13"
+
+# force vendored openssl so libssl-dev is not required
+openssl = { version = "0.10", features = ["vendored"] }
+
+# logging / tracing
+tracing        = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# testing
+proptest       = "1"
+criterion      = { version = "0.5", features = ["html_reports"] }
+
+[profile.release]
+opt-level     = 3
+lto           = "fat"
+codegen-units = 1
+panic         = "abort"
+
+[profile.bench]
+opt-level     = 3
+debug         = true

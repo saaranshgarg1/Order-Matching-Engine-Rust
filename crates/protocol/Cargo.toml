@@ -1,0 +1,14 @@
+[package]
+name    = "protocol"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+exchange-core = { path = "../core" }
+thiserror = { workspace = true }
+serde     = { workspace = true }
+serde_json = { workspace = true }
+bytes     = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

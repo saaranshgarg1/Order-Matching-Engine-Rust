@@ -1,0 +1,12 @@
+[package]
+name    = "exchange-metrics"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+hdrhistogram              = { workspace = true }
+metrics                   = { workspace = true }
+metrics-exporter-prometheus = { workspace = true }
+tracing                   = { workspace = true }
+thiserror                 = { workspace = true }
+openssl                   = { workspace = true }

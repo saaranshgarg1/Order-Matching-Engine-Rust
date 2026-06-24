@@ -1,0 +1,22 @@
+[package]
+name    = "loadgen"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "loadgen"
+path = "src/main.rs"
+
+[dependencies]
+protocol          = { path = "../protocol" }
+exchange-core = { path = "../core" }
+tokio             = { workspace = true }
+bytes             = { workspace = true }
+serde             = { workspace = true }
+serde_json        = { workspace = true }
+hdrhistogram      = { workspace = true }
+thiserror         = { workspace = true }
+tracing           = { workspace = true }
+tracing-subscriber = { workspace = true }
+clap              = { version = "4", features = ["derive"] }
+rand              = "0.8"

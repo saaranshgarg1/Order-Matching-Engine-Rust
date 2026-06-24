@@ -1,0 +1,10 @@
+/target
+Cargo.lock
+*.wal
+*.snap
+*.log
+__pycache__/
+*.pyc
+.env
+deploy/grafana/data/
+deploy/prometheus/data/

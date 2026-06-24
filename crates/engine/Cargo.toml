@@ -1,0 +1,15 @@
+[package]
+name    = "engine"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+exchange-core = { path = "../core" }
+wal               = { path = "../wal" }
+exchange-metrics = { path = "../metrics" }
+protocol          = { path = "../protocol" }
+crossbeam         = { workspace = true }
+crossbeam-channel = { workspace = true }
+thiserror         = { workspace = true }
+tracing           = { workspace = true }
+core_affinity     = "0.8"

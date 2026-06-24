@@ -1,6 +1,6 @@
 use crate::types::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct NewOrder {
     pub id: OrderId,
     pub symbol: SymbolId,
@@ -12,14 +12,14 @@ pub struct NewOrder {
     pub qty: Qty,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum Command {
     New(NewOrder),
     Cancel { id: OrderId, symbol: SymbolId },
     Replace { id: OrderId, new_price: Price, new_qty: Qty, symbol: SymbolId },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Sequenced {
     pub seq: Seq,
     pub ts: Ts,

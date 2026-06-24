@@ -10,6 +10,7 @@ exchange-metrics = { path = "../metrics" }
 protocol          = { path = "../protocol" }
 crossbeam         = { workspace = true }
 crossbeam-channel = { workspace = true }
+serde_json        = { workspace = true }
 thiserror         = { workspace = true }
 tracing           = { workspace = true }
 core_affinity     = "0.8"

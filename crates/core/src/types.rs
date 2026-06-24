@@ -5,7 +5,7 @@ pub type Seq = u64;
 pub type Ts = u64;
 pub type SymbolId = u32;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Side {
     Buy,
     Sell,
@@ -20,7 +20,7 @@ impl Side {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum OrderType {
     Limit,
     Market,
@@ -30,7 +30,7 @@ pub enum OrderType {
     StopLimit,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TimeInForce {
     Gtc,
     Day,

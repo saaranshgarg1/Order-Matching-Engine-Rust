@@ -11,6 +11,7 @@ path = "src/main.rs"
 exchange-core = { path = "../core" }
 engine            = { path = "../engine" }
 wal               = { path = "../wal" }
+marketdata        = { path = "../marketdata" }
 protocol          = { path = "../protocol" }
 exchange-metrics = { path = "../metrics" }
 tokio             = { workspace = true }

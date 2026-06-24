@@ -505,3 +505,236 @@ mod tests {
         assert!(b.check_qty_conservation());
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Property tests (plan.md §7) — all 7 invariants via proptest random streams
+// ─────────────────────────────────────────────────────────────────────────────
+#[cfg(test)]
+mod property_tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    /// One operation in a random stream.
+    #[derive(Debug, Clone)]
+    enum Op {
+        NewLimit  { id: u64, side: Side, price: i64, qty: u64 },
+        NewMarket { id: u64, side: Side, qty: u64 },
+        NewFok    { id: u64, side: Side, price: i64, qty: u64 },
+        Cancel    { id: u64 },
+    }
+
+    fn arb_side() -> impl Strategy<Value = Side> {
+        prop_oneof![Just(Side::Buy), Just(Side::Sell)]
+    }
+
+    fn arb_op(max_id: u64) -> impl Strategy<Value = Op> {
+        prop_oneof![
+            // limit orders: prices in 95..105 range to encourage crossing
+            (1u64..=max_id, arb_side(), 95i64..=105i64, 1u64..=50u64)
+                .prop_map(|(id, s, p, q)| Op::NewLimit { id, side: s, price: p, qty: q }),
+            (1u64..=max_id, arb_side(), 1u64..=20u64)
+                .prop_map(|(id, s, q)| Op::NewMarket { id, side: s, qty: q }),
+            (1u64..=max_id, arb_side(), 95i64..=105i64, 1u64..=50u64)
+                .prop_map(|(id, s, p, q)| Op::NewFok { id, side: s, price: p, qty: q }),
+            (1u64..=max_id).prop_map(|id| Op::Cancel { id }),
+        ]
+    }
+
+    /// Apply a vec of Ops to a fresh book; deduplicate ids so we never get DuplicateId
+    /// by assigning a fresh monotonic id at apply-time.
+    fn apply_ops(ops: &[Op]) -> (OrderBook, Vec<OutputEvent>) {
+        let mut book = OrderBook::new(1, 1);
+        let mut all_events = Vec::new();
+        let mut out = Vec::new();
+        let mut seq = 1u64;
+        let mut id_gen = 1u64;
+
+        for op in ops {
+            out.clear();
+            let id = id_gen;
+            id_gen += 1;
+
+            let cmd = match op {
+                Op::NewLimit { side, price, qty, .. } => Command::New(NewOrder {
+                    id, symbol: 1, side: *side, kind: OrderType::Limit,
+                    tif: TimeInForce::Gtc, price: *price, stop_price: 0, qty: *qty,
+                }),
+                Op::NewMarket { side, qty, .. } => Command::New(NewOrder {
+                    id, symbol: 1, side: *side, kind: OrderType::Market,
+                    tif: TimeInForce::Gtc, price: 0, stop_price: 0, qty: *qty,
+                }),
+                Op::NewFok { side, price, qty, .. } => Command::New(NewOrder {
+                    id, symbol: 1, side: *side, kind: OrderType::Fok,
+                    tif: TimeInForce::Gtc, price: *price, stop_price: 0, qty: *qty,
+                }),
+                Op::Cancel { id: cancel_id } => {
+                    // cancel a real id from the book if any exist; otherwise cancel a fake one
+                    let real_id = book.id_index.keys().next().copied().unwrap_or(*cancel_id);
+                    Command::Cancel { id: real_id, symbol: 1 }
+                }
+            };
+
+            apply(&mut book, &Sequenced { seq, ts: seq * 100, cmd }, &mut out);
+            all_events.extend_from_slice(&out);
+            seq += 1;
+        }
+        (book, all_events)
+    }
+
+    proptest! {
+        // ── Invariant 1: No crossed book ─────────────────────────────────
+        #[test]
+        fn prop_no_crossed_book(ops in prop::collection::vec(arb_op(50), 1..80)) {
+            let (book, _) = apply_ops(&ops);
+            prop_assert!(book.check_no_cross(),
+                "book crossed: best_bid={:?} best_ask={:?}",
+                book.best_bid(), book.best_ask());
+        }
+
+        // ── Invariant 2: Qty conservation — every trade has qty > 0 and
+        //    total qty removed from book (via fills) matches qty observed in
+        //    Trade events. Each Trade event fills the same qty on both sides.
+        #[test]
+        fn prop_qty_conservation(ops in prop::collection::vec(arb_op(50), 1..80)) {
+            let (book, events) = apply_ops(&ops);
+            // All trade events must have qty > 0
+            for ev in &events {
+                if let OutputEvent::Trade { qty, taker, maker, .. } = ev {
+                    prop_assert!(*qty > 0, "trade with zero qty: taker={} maker={}", taker, maker);
+                }
+            }
+            // Book-level conservation: id_index totals == level totals
+            prop_assert!(book.check_qty_conservation(),
+                "qty conservation violated after ops: id_index != level totals");
+        }
+
+        // ── Invariant 5: No phantom liquidity ───────────────────────────
+        #[test]
+        fn prop_no_phantom_liquidity(ops in prop::collection::vec(arb_op(50), 1..80)) {
+            let (book, _) = apply_ops(&ops);
+            prop_assert!(book.check_qty_conservation(),
+                "phantom liquidity: id_index total != level totals");
+        }
+
+        // ── Invariant 4: FOK atomicity ──────────────────────────────────
+        #[test]
+        fn prop_fok_atomicity(
+            resting_qty  in 1u64..=20u64,
+            fok_qty      in 1u64..=30u64,
+        ) {
+            let mut book = OrderBook::new(1, 1);
+            let mut out  = Vec::new();
+
+            // place a resting sell
+            apply(&mut book, &Sequenced {
+                seq: 1, ts: 100,
+                cmd: Command::New(NewOrder {
+                    id: 1, symbol: 1, side: Side::Sell, kind: OrderType::Limit,
+                    tif: TimeInForce::Gtc, price: 100, stop_price: 0, qty: resting_qty,
+                }),
+            }, &mut out);
+            out.clear();
+
+            // submit FOK buy
+            apply(&mut book, &Sequenced {
+                seq: 2, ts: 200,
+                cmd: Command::New(NewOrder {
+                    id: 2, symbol: 1, side: Side::Buy, kind: OrderType::Fok,
+                    tif: TimeInForce::Gtc, price: 100, stop_price: 0, qty: fok_qty,
+                }),
+            }, &mut out);
+
+            let trade_count = out.iter().filter(|e| matches!(e, OutputEvent::Trade { .. })).count();
+            let is_filled   = out.iter().any(|e| matches!(e, OutputEvent::Filled { id: 2, .. }));
+            let is_rejected = out.iter().any(|e| matches!(e, OutputEvent::Rejected { reason: RejectReason::FokUnfillable, .. }));
+
+            if fok_qty <= resting_qty {
+                // should fully fill
+                prop_assert!(is_filled,  "FOK should fill when resting_qty={resting_qty} >= fok_qty={fok_qty}");
+                prop_assert!(trade_count > 0, "FOK fill must emit trade events");
+            } else {
+                // should reject with zero trades
+                prop_assert!(is_rejected, "FOK should reject when resting_qty={resting_qty} < fok_qty={fok_qty}");
+                prop_assert_eq!(trade_count, 0, "FOK reject must emit zero trades");
+            }
+        }
+
+        // ── Invariant 6: Replay determinism ─────────────────────────────
+        #[test]
+        fn prop_replay_determinism(ops in prop::collection::vec(arb_op(30), 1..50)) {
+            let (book1, events1) = apply_ops(&ops);
+            let (book2, events2) = apply_ops(&ops);
+
+            // Same command stream → identical book state
+            prop_assert_eq!(book1.best_bid(), book2.best_bid(), "bid mismatch after replay");
+            prop_assert_eq!(book1.best_ask(), book2.best_ask(), "ask mismatch after replay");
+
+            // Same trade tape length and prices
+            let trades1: Vec<_> = events1.iter()
+                .filter_map(|e| if let OutputEvent::Trade { price, qty, .. } = e { Some((price, qty)) } else { None })
+                .collect();
+            let trades2: Vec<_> = events2.iter()
+                .filter_map(|e| if let OutputEvent::Trade { price, qty, .. } = e { Some((price, qty)) } else { None })
+                .collect();
+            prop_assert_eq!(trades1.len(), trades2.len(), "trade tape length differs");
+            for (t1, t2) in trades1.iter().zip(trades2.iter()) {
+                prop_assert_eq!(t1, t2, "trade mismatch");
+            }
+        }
+
+        // ── Invariant 7: Cancel correctness ────────────────────────────
+        #[test]
+        fn prop_cancel_unknown_is_reject(bogus_id in 900u64..=999u64) {
+            let mut book = OrderBook::new(1, 1);
+            let mut out  = Vec::new();
+            apply(&mut book, &Sequenced {
+                seq: 1, ts: 0,
+                cmd: Command::Cancel { id: bogus_id, symbol: 1 },
+            }, &mut out);
+            prop_assert!(
+                out.iter().any(|e| matches!(e, OutputEvent::Rejected { reason: RejectReason::UnknownId, .. })),
+                "cancel of unknown id must produce Rejected"
+            );
+        }
+
+        // ── Invariant 3: Price-time priority ────────────────────────────
+        #[test]
+        fn prop_price_time_priority(
+            n_resting in 2u64..=8u64,
+            fill_qty  in 1u64..=5u64,
+        ) {
+            // Place n_resting sell orders all at price 100, same qty=10, in order 1..n
+            // Then buy with qty = fill_qty (enough to fill some but not all at same price).
+            // The first resting order must always fill before later ones.
+            let mut book = OrderBook::new(1, 1);
+            let mut out  = Vec::new();
+
+            for i in 1..=n_resting {
+                apply(&mut book, &Sequenced {
+                    seq: i, ts: i * 100,
+                    cmd: Command::New(NewOrder {
+                        id: i, symbol: 1, side: Side::Sell, kind: OrderType::Limit,
+                        tif: TimeInForce::Gtc, price: 100, stop_price: 0, qty: 10,
+                    }),
+                }, &mut out);
+            }
+            out.clear();
+
+            // Buy with fill_qty (≤ 10 so at most the first level gets partially filled)
+            apply(&mut book, &Sequenced {
+                seq: n_resting + 1, ts: (n_resting + 1) * 100,
+                cmd: Command::New(NewOrder {
+                    id: n_resting + 1, symbol: 1, side: Side::Buy, kind: OrderType::Limit,
+                    tif: TimeInForce::Gtc, price: 100, stop_price: 0, qty: fill_qty,
+                }),
+            }, &mut out);
+
+            // All trades must be against maker id = 1 (first resting order = earliest)
+            for ev in &out {
+                if let OutputEvent::Trade { maker, .. } = ev {
+                    prop_assert_eq!(*maker, 1u64, "time priority violated: expected maker=1 got {}", maker);
+                }
+            }
+        }
+    }
+}

@@ -54,9 +54,7 @@ pub struct Order {
 ```
 
 **Why fixed-point price:** floating point makes `price_a == price_b` unreliable and breaks
-deterministic priority and replay. All prices are integers in ticks. This is a question
-interviewers ask — have the answer ready.
-
+deterministic priority and replay. All prices are integers in ticks.
 ---
 
 ## 2. Commands (engine input)

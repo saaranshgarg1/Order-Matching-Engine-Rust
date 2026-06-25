@@ -5,10 +5,7 @@
 ///   2. Simulate a crash by truncating the last WAL segment mid-record.
 ///   3. Replay the WAL into a fresh "recovered" book.
 ///   4. Assert: recovered book state == live book state up to last committed seq.
-///   5. Assert: recovered trade tape == live trade tape up to last committed seq.
-///
-/// This is the determinism / replay guarantee that every matching-engine
-/// interviewer will ask about. The test must stay green when matching logic changes.
+///   5. Assert: recovered trade tape == live trade tape up to last committed s
 
 use std::fs::{self, OpenOptions};
 use std::io::Write;

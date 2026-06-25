@@ -5,12 +5,6 @@
 
 ---
 
-## Pitch (interview-ready, 3 sentences)
-
-Built a stock exchange matching engine in Rust. It maintains a limit order book per symbol, matches buy/sell orders by strict **price-time priority**, and supports limit, market, IOC, FOK, and stop orders with partial fills. The hot path is **single-threaded per symbol** (LMAX-disruptor style) so there are no locks on the critical matching path; every order event is written to an append-only WAL for deterministic crash recovery, and trades + book deltas stream to clients over WebSocket.
-
----
-
 ## Architecture
 
 ```
@@ -177,7 +171,7 @@ See `adr.md` for full rationale and rejected alternatives.
 
 ---
 
-## Non-goals (know the boundary)
+## Non-goals
 - No distributed consensus / multi-node replication
 - No real clearing, settlement, fees, or auth
 - No full FIX engine (FIX-subset only)

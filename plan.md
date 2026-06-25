@@ -6,21 +6,6 @@
 
 ---
 
-## 0. The one-paragraph pitch (for interviewers)
-
-> I built a stock exchange matching engine in Rust. It maintains a limit order book per
-> symbol, matches incoming buy/sell orders by strict **price-time priority**, and supports
-> limit, market, IOC, FOK, and stop orders with partial fills. The hot path is
-> **single-threaded per symbol** (LMAX-disruptor style) so there are no locks on the
-> critical matching path — parallelism comes from sharding by symbol. Every order event is
-> written to an append-only WAL so the book can be rebuilt deterministically after a crash,
-> and trades + book deltas are streamed to clients over WebSocket. I instrument it with
-> p50/p99/p999 latency histograms and sustain ~1M+ orders/sec per shard.
-
-If you can say the above and defend every clause, the project has done its job.
-
----
-
 ## 1. Goals & non-goals
 
 ### Goals
@@ -31,7 +16,7 @@ If you can say the above and defend every clause, the project has done its job.
 - **Observable**: latency percentiles, throughput, live book depth.
 - **Explainable**: every design choice has a one-sentence justification.
 
-### Non-goals (say these out loud in interviews — knowing the boundary is signal)
+### Non-goals
 - Not a real regulated exchange (no clearing, settlement, KYC, fees, halts beyond a toy).
 - Not distributed consensus (single-node authoritative book; replication is a stretch goal).
 - Not a full FIX engine (we implement a *subset* + a custom binary protocol).
@@ -43,7 +28,7 @@ If you can say the above and defend every clause, the project has done its job.
 
 | Concern | Choice | Why |
 |---|---|---|
-| Core language | **Rust (stable)** | Zero-cost abstractions, no GC pauses (critical for tail latency), memory safety without a runtime, great for the lock-free/ownership story interviewers love. |
+| Core language | **Rust (stable)** | Zero-cost abstractions, no GC pauses (critical for tail latency), memory safety without a runtime, great for the lock-free/ownership |
 | Async runtime / networking | **Tokio** | De-facto standard; needed for the gateway, WS feed, and admin API — but kept *off* the matching hot path. |
 | Hot-path threading | **OS threads + `crossbeam` channels / custom SPSC ring buffer** | The matching core must be predictable; async tasks add scheduling jitter. One pinned thread per shard. |
 | Serialization (wire + WAL) | **`rkyv`** (zero-copy) or **`bincode`** | `rkyv` lets you read structs straight out of a byte buffer with no deserialization cost — strong latency story. `bincode` is simpler if you want to start fast. |
@@ -57,7 +42,7 @@ If you can say the above and defend every clause, the project has done its job.
 | Dashboards | **Grafana** (metrics) + a tiny **web UI** (depth chart over WS) | Visual demo sells the project. |
 | Build/dev | **Cargo workspaces**, `just` or `make`, Docker Compose for Grafana/Prometheus | Multi-crate workspace keeps boundaries clean. |
 
-**Why Rust over C++/Go/Java here:** C++ gives the same latency but you spend the interview defending UB and memory bugs; Go's GC introduces tail-latency pauses that are exactly what an exchange cannot have; Java needs careful JVM tuning (this is literally what LMAX fought). Rust gives C++-class latency with a safety story you can defend in 30 seconds.
+**Why Rust over C++/Go/Java here:** C++ gives the same latency but no memory safety; Go's GC introduces tail-latency pauses that are exactly what an exchange cannot have; Java needs careful JVM tuning (this is literally what LMAX fought). Rust gives C++-class latency with safety
 
 ---
 
@@ -205,7 +190,7 @@ on incoming aggressive order O (say a buy):
       cancel remainder
   after matching: check stop triggers against new last-trade price
 ```
-The resting order always sets the trade price (price improvement goes to the order that was there first) — this is a correctness detail interviewers probe.
+The resting order always sets the trade price (price improvement goes to the order that was there first).
 
 ---
 
@@ -234,8 +219,6 @@ State these as invariants and test them with `proptest` over random valid order 
 5. **No phantom liquidity**: sum of qty in id-index == sum of qty across all price levels.
 6. **Replay determinism**: replay(WAL) produces byte-identical book state and trade tape vs. the live run.
 7. **Cancel correctness**: a cancelled order never trades afterward; cancel of unknown/filled id is a clean reject.
-
-These invariant tests are worth more than line coverage and are very interview-friendly ("how do you know it's correct?").
 
 ---
 

@@ -1,8 +1,6 @@
 # Architecture Decision Records
 
 Each ADR records one decision: the context, the choice, the alternatives, and the trade-off.
-These are the questions an interviewer will probe — the value is in the *rejected* options.
-
 Status legend: **Accepted** · Proposed · Superseded
 
 ---
@@ -16,7 +14,7 @@ plus memory safety so the project doesn't become a UB-debugging story.
 **Decision.** Write the engine in **Rust**.
 
 **Alternatives.**
-- *C++*: same latency, but no memory safety; interview time spent defending UB/leaks.
+- *C++*: same latency, but no memory safety.
 - *Go*: fast to write, but **GC stop-the-world pauses** are exactly the tail-latency killer an exchange can't tolerate.
 - *Java*: viable (LMAX did it) but needs heavy JVM/GC tuning and off-heap tricks to hit the tail; Rust gets there without the fight.
 

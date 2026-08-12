@@ -1,5 +1,5 @@
 use std::sync::{Arc, Mutex};
-use crossbeam_channel::{unbounded, Receiver, Sender, TrySendError};
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use exchange_core::OutputEvent;
 
 /// Fan-out egress bus.  Multiple subscribers can be added via `subscribe()`.

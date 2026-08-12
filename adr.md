@@ -18,7 +18,7 @@ plus memory safety so the project doesn't become a UB-debugging story.
 - *Go*: fast to write, but **GC stop-the-world pauses** are exactly the tail-latency killer an exchange can't tolerate.
 - *Java*: viable (LMAX did it) but needs heavy JVM/GC tuning and off-heap tricks to hit the tail; Rust gets there without the fight.
 
-**Trade-off.** Steeper learning curve and stricter borrow checker vs. a clean safety + latency story and zero-cost abstractions. Worth it for a fintech-targeted resume project.
+**Trade-off.** Steeper learning curve and stricter borrow checker vs. a clean safety + latency story and zero-cost abstractions. Worth it for a fintech-targeted project.
 
 ---
 

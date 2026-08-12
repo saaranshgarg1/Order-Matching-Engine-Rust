@@ -90,8 +90,8 @@ pub fn load_snapshot(path: &Path) -> Result<(OrderBook, Seq), WalError> {
     let mut book = OrderBook::new(snap.symbol, snap.tick);
     book.last_trade = snap.last_trade;
 
-    use exchange_core::events::{Command, NewOrder};
-    use exchange_core::Sequenced;
+    // use exchange_core::events::{Command, NewOrder};
+    // use exchange_core::Sequenced;
 
     for so in snap.resting_orders {
         let side = if so.side == 0 { Side::Buy } else { Side::Sell };

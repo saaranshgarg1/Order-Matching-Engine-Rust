@@ -118,7 +118,7 @@ fn run_shard(cfg: ShardConfig) {
             let snap = book.depth(1);
             if let (Some((bid, bq)), Some((ask, aq))) = (snap.bids.first(), snap.asks.first()) {
                 use exchange_metrics::{set_book_depth, set_spread};
-                use protocol::ticks_to_dollars;
+                // use protocol::ticks_to_dollars;
                 set_book_depth(sym_label, "bid", *bq as f64);
                 set_book_depth(sym_label, "ask", *aq as f64);
                 set_spread(sym_label, (ask - bid) as f64);

@@ -18,7 +18,7 @@ pub fn json_to_command(msg: JsonInbound) -> Option<Command> {
     }
 }
 
-/// Map a RejectReason to a human-readable string for JSON clients.
+// Map a RejectReason to a human-readable string for JSON clients.
 pub fn reject_reason_str(r: RejectReason) -> &'static str {
     match r {
         RejectReason::UnknownSymbol    => "unknown_symbol",
